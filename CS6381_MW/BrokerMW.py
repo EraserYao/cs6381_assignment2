@@ -88,8 +88,10 @@ class BrokerMW():
                 events = dict (self.poller.poll (timeout=timeout))
                 if not events:
                     timeout = self.upcall_obj.invoke_operation ()
-                elif self.rep in events:
-                    timeout = self.handle_request ()
+                elif self.req in events:
+                    timeout = self.handle_reply ()
+                elif self.sub in events:
+                    timeout = self.proxy ()
                 else:
                     raise Exception ("Unknown event after poll")
             self.logger.info ("BrokerMW::event_loop - out of the event loop")
@@ -104,8 +106,8 @@ class BrokerMW():
             disc_resp.ParseFromString (bytesRcvd)
             if (disc_resp.msg_type == discovery_pb2.TYPE_REGISTER):
                 timeout = self.upcall_obj.register_response (disc_resp.register_resp)
-            elif (disc_resp.msg_type == discovery_pb2.TYPE_LOOKUP_PUB_BY_TOPIC):
-                timeout = self.upcall_obj.lookup_response (disc_resp.lookup_resp)
+            elif (disc_resp.msg_type == discovery_pb2.TYPE_LOOKUP_ALL_PUBS):
+                timeout = self.upcall_obj.lookall_response (disc_resp.lookall_resp)
             elif (disc_resp.msg_type == discovery_pb2.TYPE_ISREADY):
                 timeout = self.upcall_obj.isready_response (disc_resp.isready_resp)
             else:
@@ -115,7 +117,7 @@ class BrokerMW():
             raise e
         
     
-    def register (self, name):
+    def register (self, name,topiclist):
         ''' register the appln with the discovery service '''
 
         try:
@@ -132,6 +134,7 @@ class BrokerMW():
             register_req = discovery_pb2.RegisterReq ()  # allocate 
             register_req.role = discovery_pb2.ROLE_BOTH
             register_req.info.CopyFrom (reg_info)  # copy contents of inner structure
+            register_req.topiclist[:] = topiclist   # this is how repeated entries are added (or use append() or extend ()
             self.logger.debug ("BrokerMW::register - done populating nested RegisterReq")
 
             # Finally, build the outer layer DiscoveryReq Message
@@ -191,38 +194,21 @@ class BrokerMW():
 
         except Exception as e:
             raise e
-
-    def disseminate (self, id, topic, data):
-        try:
-          self.logger.debug ("BrokerMW::disseminate")
-
-          # Now use the protobuf logic to encode the info and send it.  But for now
-          # we are simply sending the string to make sure dissemination is working.
-          send_str = topic + ":" + data
-          self.logger.debug ("BrokerMW::disseminate - {}".format (send_str))
-
-          # send the info as bytes. See how we are providing an encoding of utf-8
-          self.pub.send (bytes(send_str, "utf-8"))
-
-          self.logger.debug ("BrokerMW::disseminate complete")
-        except Exception as e:
-          raise e
         
-    def lookup_publisher(self,topiclist):
+    def lookall_publisher(self):
         #send topic list to discovery
-        #look up like register
+        #look all like register
         try:
             self.logger.info ("BrokerMW::lookup")
-            self.logger.debug ("BrokerMW::lookup_req - populate the LookupPubByTopicReq")
-            lookup_req = discovery_pb2.LookupPubByTopicReq () # allocate
-            lookup_req.topiclist[:] = topiclist
-            self.logger.debug ("BrokerMW::lookup - done populating nested LookupPubByTopicReq")
+            self.logger.debug ("BrokerMW::lookup_req - populate the LookupAllPubReq")
+            lookall_req = discovery_pb2.LookupAllPubReq () # allocate
+            self.logger.debug ("BrokerMW::lookup - done populating nested LookupAllPubReq")
 
             # Finally, build the outer layer DiscoveryReq Message
             self.logger.debug ("BrokerMW::lookup - build the outer DiscoveryReq message")
             disc_req = discovery_pb2.DiscoveryReq ()  # allocate
-            disc_req.msg_type = discovery_pb2.TYPE_LOOKUP_PUB_BY_TOPIC  # set message type
-            disc_req.lookup_req.CopyFrom (lookup_req)
+            disc_req.msg_type = discovery_pb2.TYPE_LOOKUP_ALL_PUBS  # set message type
+            disc_req.lookall_req.CopyFrom (lookall_req)
             self.logger.debug ("BrokerMW::lookup - done building the outer message")
 
             # now let us stringify the buffer and print it. This is actually a sequence of bytes and not
@@ -240,17 +226,40 @@ class BrokerMW():
         except Exception as e:
             raise e
     
-    def receive_data (self, id, pubaddr):
+    def connect_pub (self, pubaddr):
         try:
-            self.logger.debug ("BrokerMW::receive")
-            self.logger.debug ("BrokerMW::receive - connect to the pub socket")
+            self.logger.info ("BrokerMW::lookup - connect to publisher")
+            self.logger.debug ("BrokerMW::lookup - connect to the pub socket")
 
             connect_string = "tcp://" + str(pubaddr)
             self.sub.connect (connect_string)
-      
-            bytesRcvd = self.req.recv ()
-            data=str(bytesRcvd)
-            self.logger.debug ("BrokerMW::receive complete")
-            return str(data)
+ 
+            self.logger.debug ("BrokerMW::connect complete")
         except Exception as e:
             raise e
+        
+
+    def proxy (self):
+        try:
+            self.logger.info ("BrokerMW::disseminating - connect to publisher")
+
+            data=self.sub.recv_string ()
+            self.print_data(data)
+            
+            self.pub.send(bytes(data,"utf-8"))
+
+            self.logger.debug ("BrokerMW::proxy complete")
+        except Exception as e:
+            raise e
+        
+    def print_data (self,data):
+        ''' Pretty print '''
+        try:
+            self.logger.info ("**********************************")
+            self.logger.info ("BrokerMW::proxy print")
+            self.logger.info ("------------------------------")
+            self.logger.info ("     data: {}".format (data))
+            self.logger.info ("**********************************")
+
+        except Exception as e:
+          raise e

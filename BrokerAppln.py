@@ -35,17 +35,15 @@ class BrokerAppln():
         INITIALIZE = 0,
         CONFIGURE = 1,
         REGISTER=2,
-        READY = 3,
-        ISREADY = 4,
-        DISSEMINATE = 5,
-        COMPLETED = 6,
-        LOOKUP = 7,
-        DATARECEIVE = 8
+        ISREADY = 3,
+        DISSEMINATE = 4,
+        LOOKUP = 5
         
 
     def __init__(self,logger):
         self.state = self.State.INITIALIZE # state that are we in
         self.name = None # our name (some unique name)
+        self.num_topics=0
         self.topiclist = None # the different topics
         self.mw_obj = None # handle to the underlying Middleware object
         self.logger = logger  # internal logger for print statements
@@ -57,7 +55,13 @@ class BrokerAppln():
             self.state = self.State.CONFIGURE
             # initialize our variables
             self.name = args.name # our name
+            self.num_topics = args.num_topics
 
+            # Now get our topic list of interest
+            self.logger.debug ("BrokerAppln::configure - selecting our topic list")
+            ts = TopicSelector ()
+            self.topiclist = ts.interest (self.num_topics)  # let topic selector give us the desired num of topics
+    
             # Now setup up our underlying middleware object to which we delegate
             # everything
             self.logger.debug ("BrokerAppln::configure - initialize the middleware object")
@@ -98,7 +102,7 @@ class BrokerAppln():
             if (self.state == self.State.REGISTER):
                 # send a register msg to discovery service
                 self.logger.debug ("BrokerAppln::invoke_operation - register with the discovery service")
-                self.mw_obj.register (self.name)
+                self.mw_obj.register (self.name,self.topiclist)
 
                 return None
 
@@ -108,55 +112,17 @@ class BrokerAppln():
 
                 return None
       
-            elif (self.state == self.State.DISSEMINATE):
-                self.logger.debug ("BrokerAppln::invoke_operation - start Disseminating")
-
-                # Now disseminate topics at the rate at which we have configured ourselves.
-                ts = TopicSelector ()
-                for i in range (self.iters):
-                    for topic in self.topiclist:
-                      # For now, we have chosen to send info in the form "topic name: topic value"
-                      # In later assignments, we should be using more complex encodings using
-                      # protobuf.  In fact, I am going to do this once my basic logic is working.
-                        dissemination_data = ts.gen_publication (topic)
-                        self.mw_obj.disseminate (self.name, topic, dissemination_data)
-
-                    # Now sleep for an interval of time to ensure we disseminate at the
-                    # frequency that was configured.
-                    time.sleep (1/float (self.frequency))  # ensure we get a floating point num
-
-                self.logger.debug ("BrokerAppln::invoke_operation - Dissemination completed")
-
-                # we are done. So we move to the completed state
-                self.state = self.State.COMPLETED
-
-                # return a timeout of zero so that the event loop sends control back to us right away.
-                return 0
-
             elif (self.state == self.State.LOOKUP):
 
                 self.logger.debug ("BrokerAppln::invoke_operation - look up from discovery about publishers") 
-                self.mw_obj.lookup_publisher(self.topiclist) #send look up request
+                self.mw_obj.lookall_publisher() #send look up request
 
                 return None
             
-            elif (self.state == self.State.DATARECEIVE):
-                
-                self.logger.debug ("BrokerAppln::invoke_operation - connect to publisher and reveive data")    
-                #recevie the message
-                for pubaddr in self.pubinfos.values():
-                    received_data = self.mw_obj.receive_data (self.name,pubaddr)
-                    strs=received_data.split(':')
-                    #print data we received
-                    self.print_data(strs[0],strs[1])
-
-
-                self.logger.debug ("BrokerAppln::invoke_operation - date receive completed")
-    
-                # we are done. And continue to receive publishers
-                self.state = self.State.LOOKUP
-    
-                return 0
+            elif (self.state == self.State.DISSEMINATE):
+                self.logger.debug ("BrokerAppln::invoke_operation - start Disseminating")
+        
+                return None
 
             else:
                 raise ValueError ("Undefined state of the appln object")
@@ -180,38 +146,70 @@ class BrokerAppln():
 
             else:
                 self.logger.debug ("BrokerAppln::register_response - registration is a failure")
-                raise ValueError ("Subscriber needs to have unique id")
+                raise ValueError ("Broker needs to have unique id")
 
         except Exception as e:
             raise e
 
+    def isready_response (self, isready_resp):
+        ''' handle isready response '''
 
-    def lookup_response(self,lookup_resp):
-        '''handle discovery response about publishers'''
         try:
-            self.logger.info ("BrokerAppln::lookup_response")
-            if (lookup_resp.status == discovery_pb2.STATUS_SUCCESS):
-                self.logger.debug ("BrokerAppln::lookup_response - start receive publisher")
-                
-                #return publishers which send topic to us
-                for publisherInfo in lookup_resp.publisherInfos:
-                    # temporary store publishers in this structure
-                    self.pubinfos[str(publisherInfo.id)]=str(publisherInfo.addr)+':'+str(publisherInfo.port)
+            self.logger.info ("BrokerAppln::isready_response")
 
-                #next step is to connect all these publishers
-
-                self.state = self.State.DATARECEIVE
-
-                # return a timeout of zero so that the event loop in its next iteration will immediately make
-                # an upcall to us
-                return 0
+            # Notice how we get that loop effect with the sleep (10)
+            # by an interaction between the event loop and these
+            # upcall methods.
+            if not isready_resp.status:
+                # discovery service is not ready yet
+                self.logger.debug ("BrokerAppln::driver - Not ready yet; check again")
+                time.sleep (10)  # sleep between calls so that we don't make excessive calls
 
             else:
-                self.logger.debug ("BrokerAppln::lookup_response - look up failure")
-                raise ValueError ("Subscriber looks up failure")
+                # we got the go ahead
+                # set the state to disseminate
+                self.state = self.State.LOOKUP
+
+            # return timeout of 0 so event loop calls us back in the invoke_operation
+            # method, where we take action based on what state we are in.
+            return 0
+
+        except Exception as e:
+          raise e
+    
+    def lookall_response(self,lookall_resp):
+        '''handle discovery response about publishers'''
+        try:
+            self.logger.info ("BrokerAppln::lookall_response")
+            #return publishers which send topic to us
+            for publisherInfo in lookall_resp.publisherInfos:
+                # temporary store publishers in this structure
+                self.mw_obj.connect_pub(str(publisherInfo.addr)+':'+str(publisherInfo.port))
+
+            self.state = self.State.DISSEMINATE
+            # return a timeout of zero so that the event loop in its next iteration will immediately make
+            # an upcall to us
+            return 0
             
         except Exception as e:
             raise e
+    ########################################
+    # dump the contents of the object 
+    ########################################
+    def dump (self):
+        ''' Pretty print '''
+        try:
+            self.logger.info ("**********************************")
+            self.logger.info ("BrokerAppln::dump")
+            self.logger.info ("------------------------------")
+            self.logger.info ("     Name: {}".format (self.name))
+            self.logger.info ("     Num Topics: {}".format (self.num_topics))
+            self.logger.info ("     TopicList: {}".format (self.topiclist))
+            self.logger.info ("**********************************")
+
+        except Exception as e:
+          raise e
+        
 def parseCmdLineArgs ():
     # instantiate a ArgumentParser object
     parser = argparse.ArgumentParser (description="Subscriber Application")
@@ -231,15 +229,11 @@ def parseCmdLineArgs ():
     parser.add_argument ("-d", "--discovery", default="localhost:5555", help="IP Addr:Port combo for the discovery service, default localhost:5555")
     
     parser.add_argument ("-c", "--config", default="config.ini", help="configuration file (default: config.ini)")
-    
-    parser.add_argument ("-i", "--iters", type=int, default=1000, help="number of publication iterations (default: 1000)")
 
     parser.add_argument ("-T", "--num_topics", type=int, choices=range(1,10), default=1, help="Number of topics to publish, currently restricted to max of 9")
-
-    parser.add_argument ("-c", "--config", default="config.ini", help="configuration file (default: config.ini)")
-
-    parser.add_argument ("-f", "--frequency", type=int,default=1, help="Rate at which topics disseminated: default once a second - use integers")
     
+    parser.add_argument ("-l", "--loglevel", type=int, default=logging.INFO, choices=[logging.DEBUG,logging.INFO,logging.WARNING,logging.ERROR,logging.CRITICAL], help="logging level, choices 10,20,30,40,50: default 20=logging.INFO")
+
     return parser.parse_args()
 
 ###################################
@@ -251,7 +245,7 @@ def main ():
     try:
       # obtain a system wide logger and initialize it to debug level to begin with
       logging.info ("Main - acquire a child logger and then log messages in the child")
-      logger = logging.getLogger ("SubscriberAppln")
+      logger = logging.getLogger ("BrokerAppln")
 
       # first parse the arguments
       logger.debug ("Main: parse command line arguments")

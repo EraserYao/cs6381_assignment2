@@ -96,6 +96,8 @@ class DiscoveryMW():
                 timeout = self.upcall_obj.isready_request (disc_req.isready_req)
             elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_PUB_BY_TOPIC):
                 timeout = self.upcall_obj.lookup_request (disc_req.lookup_req)
+            elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_ALL_PUBS):
+                timeout = self.upcall_obj.lookall_request (disc_req.lookall_req)
             else:
                 raise ValueError ("Unrecognized request message")
             return timeout
@@ -183,6 +185,36 @@ class DiscoveryMW():
 
         # now go to our event loop to receive a response to this request
         self.logger.info ("DiscoveryMW::lookup response - sent response message")
+
+    def send_lookall_resp(self,publisherInfos):
+        self.logger.info ("DiscoveryMW::send lookall response")
+        lookall_resp=discovery_pb2.LookupAllPubResp ()
+        
+        for publisherInfo in publisherInfos:
+            newPublisherInfo=discovery_pb2.RegistrantInfo()
+            newPublisherInfo.id=publisherInfo.id
+            newPublisherInfo.addr=publisherInfo.addr
+            newPublisherInfo.port=publisherInfo.port
+            lookall_resp.publisherInfos.append(newPublisherInfo)
+
+        # Finally, build the outer layer DiscoveryResp Message
+        self.logger.debug ("DiscoveryMW::lookall response - build the outer DiscoveryResp message")
+        disc_resp = discovery_pb2.DiscoveryResp ()  # allocate
+        disc_resp.msg_type = discovery_pb2.TYPE_LOOKUP_PUB_BY_TOPIC  # set message type
+        # It was observed that we cannot directly assign the nested field here.
+        # A way around is to use the CopyFrom method as shown
+        disc_resp.lookall_resp.CopyFrom (lookall_resp)
+        self.logger.debug ("DiscoveryMW::lookall response - done building the outer message")
+    
+        buf2send = disc_resp.SerializeToString ()
+        self.logger.debug ("Stringified serialized buf = {}".format (buf2send))
+
+        # now send this to our discovery service
+        self.logger.debug ("DiscoveryMW::lookall response - send stringified buffer")
+        self.rep.send (buf2send)  # we use the "send" method of ZMQ that sends the bytes
+
+        # now go to our event loop to receive a response to this request
+        self.logger.info ("DiscoveryMW::lookall response - sent response message")
 
     def set_upcall_handle (self, upcall_obj):
         ''' set upcall handle '''

@@ -104,6 +104,19 @@ message LookupPubByTopicResp
     repeated RegistrantInfo publisherInfos=2;
 }
 
+message LookupAllPubReq
+{
+    //do not need feild
+}
+
+// TO-DO
+// Have a corresponding response to the lookupPubByTopic request
+// accordingly there will be a response to the above message
+message LookupAllPubResp
+{
+    repeated RegistrantInfo publisherInfos=2;
+}
+
 // Finally, we are going to make a union of all these request and response messages
 
 // Discovery message (one of many)
@@ -114,6 +127,7 @@ message DiscoveryReq
               RegisterReq register_req = 2;
               IsReadyReq isready_req = 3;
               LookupPubByTopicReq lookup_req = 4;
+              LookupAllPubReq lookall_req=5;
               // add more 
         }
 }
@@ -126,6 +140,7 @@ message DiscoveryResp
               RegisterResp register_resp = 2;
               IsReadyResp isready_resp = 3;
               LookupPubByTopicResp lookup_resp = 4;
+              LookupAllPubResp lookall_resp=5;
               // add more 
         }
 }

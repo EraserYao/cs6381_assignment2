@@ -61,6 +61,7 @@ class DiscoveryAppln():
         #temp data
         self.pub_data={}
         self.sub_data={}
+        self.broker={}
         self.dissemination=None
 
     def configure(self,args):
@@ -120,10 +121,16 @@ class DiscoveryAppln():
             if (self.state == self.State.PENDING):
                 # send a register msg to discovery service
                 self.logger.debug ("DiscoveryAppln::invoke_operation - waiting for pub and sub to registration")
-                #self.is_ready=False
                 if self.cur_pubnum==self.pubnum and self.cur_subnum==self.subnum:
-                    self.state = self.State.READY
-                    self.is_ready=True
+                    if self.dissemination == "Broker":
+                        if len(self.broker)>0:
+                            self.state = self.State.READY
+                            self.is_ready=True
+                        else:
+                            self.is_ready=False
+                    else:
+                        self.state = self.State.READY
+                        self.is_ready=True
                 return None
             
             elif (self.state == self.State.READY):
@@ -169,7 +176,15 @@ class DiscoveryAppln():
                     self.sub_data[sub_name]['topiclist']=reg_req.topiclist[:]
 
             elif reg_req.role==discovery_pb2.ROLE_BOTH:
-                pass
+                broker_name=reg_info.id
+                if len(self.broker)>0:
+                    status=discovery_pb2.STATUS_FAILURE
+                    reason='Broker has already exits!'
+                else:
+                    self.broker['name']=broker_name
+                    self.broker['addr']=reg_info.addr
+                    self.broker['port']=reg_info.port
+                    self.broker['topiclist']=reg_req.topiclist[:]
             else:
                 raise ValueError ("Unknown type of request")
             
@@ -197,18 +212,25 @@ class DiscoveryAppln():
         try:
             self.logger.info ("DiscoveryAppln::subscriber lookup")
             
-            publisherInfos=[]
             sub_topiclist=lookup_req.topiclist[:]
             #get the topic
-            for pubname, publisher in self.pub_data.items():
-                if list(set(publisher['topiclist'])&set(sub_topiclist)):
-                    publisherInfo=discovery_pb2.RegistrantInfo()
-                    publisherInfo.id=pubname
-                    publisherInfo.addr=publisher['addr']
-                    publisherInfo.port=publisher['port']
-                    publisherInfos.append(publisherInfo)
+            if self.dissemination == "Broker":
+                brokerInfo=discovery_pb2.RegistrantInfo()
+                brokerInfo.id=self.broker['name']
+                brokerInfo.addr=self.broker['addr']
+                brokerInfo.port=self.broker['port']
+                self.mw_obj.send_lookup_resp(brokerInfo)    
+            else:
+                publisherInfos=[]
+                for pubname, publisher in self.pub_data.items():
+                    if list(set(publisher['topiclist'])&set(sub_topiclist)):
+                        publisherInfo=discovery_pb2.RegistrantInfo()
+                        publisherInfo.id=pubname
+                        publisherInfo.addr=publisher['addr']
+                        publisherInfo.port=publisher['port']
+                        publisherInfos.append(publisherInfo)
 
-            self.mw_obj.send_lookup_resp(publisherInfos)
+                self.mw_obj.send_lookup_resp(publisherInfos)
             # return a timeout of zero so that the event loop in its next iteration will immediately make
             # an upcall to us
             return 0
@@ -216,6 +238,30 @@ class DiscoveryAppln():
         except Exception as e:
             raise e
 
+    def lookall_request(self,lookall_req):
+        try:
+            self.logger.info ("DiscoveryAppln::broker lookall")
+            
+            #get the topic
+            if self.dissemination == "Broker":
+                publisherInfos=[]
+                for pubname, publisher in self.pub_data.items():
+                    publisherInfo=discovery_pb2.RegistrantInfo()
+                    publisherInfo.id=pubname
+                    publisherInfo.addr=publisher['addr']
+                    publisherInfo.port=publisher['port']
+                    publisherInfos.append(publisherInfo)
+
+                self.mw_obj.send_lookall_resp(publisherInfos)
+            else:
+                raise ValueError ("Not broker, not allowed")
+            # return a timeout of zero so that the event loop in its next iteration will immediately make
+            # an upcall to us
+            return 0
+            
+        except Exception as e:
+            raise e
+        
     def dump (self):
         ''' Pretty print '''
 
