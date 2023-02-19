@@ -181,6 +181,7 @@ class DiscoveryAppln():
                     status=discovery_pb2.STATUS_FAILURE
                     reason='Broker has already exits!'
                 else:
+                    status=discovery_pb2.STATUS_SUCCESS
                     self.broker['name']=broker_name
                     self.broker['addr']=reg_info.addr
                     self.broker['port']=reg_info.port
@@ -213,24 +214,25 @@ class DiscoveryAppln():
             self.logger.info ("DiscoveryAppln::subscriber lookup")
             
             sub_topiclist=lookup_req.topiclist[:]
+            lookupInfos=[]
             #get the topic
-            if self.dissemination == "Broker":
-                brokerInfo=discovery_pb2.RegistrantInfo()
-                brokerInfo.id=self.broker['name']
-                brokerInfo.addr=self.broker['addr']
-                brokerInfo.port=self.broker['port']
-                self.mw_obj.send_lookup_resp(brokerInfo)    
-            else:
-                publisherInfos=[]
-                for pubname, publisher in self.pub_data.items():
-                    if list(set(publisher['topiclist'])&set(sub_topiclist)):
-                        publisherInfo=discovery_pb2.RegistrantInfo()
-                        publisherInfo.id=pubname
-                        publisherInfo.addr=publisher['addr']
-                        publisherInfo.port=publisher['port']
-                        publisherInfos.append(publisherInfo)
+            if self.is_ready:
+                if self.dissemination == "Broker":
+                    brokerInfo=discovery_pb2.RegistrantInfo()
+                    brokerInfo.id=self.broker['name']
+                    brokerInfo.addr=self.broker['addr']
+                    brokerInfo.port=self.broker['port']
+                    lookupInfos.append(brokerInfo)  
+                else:
+                    for pubname, publisher in self.pub_data.items():
+                        if list(set(publisher['topiclist'])&set(sub_topiclist)):
+                            publisherInfo=discovery_pb2.RegistrantInfo()
+                            publisherInfo.id=pubname
+                            publisherInfo.addr=publisher['addr']
+                            publisherInfo.port=publisher['port']
+                            lookupInfos.append(publisherInfo)
 
-                self.mw_obj.send_lookup_resp(publisherInfos)
+            self.mw_obj.send_lookup_resp(lookupInfos)
             # return a timeout of zero so that the event loop in its next iteration will immediately make
             # an upcall to us
             return 0
@@ -305,7 +307,7 @@ def parseCmdLineArgs ():
     
     parser.add_argument ("-c", "--config", default="config.ini", help="configuration file (default: config.ini)")
 
-    parser.add_argument ("-l", "--loglevel", type=int, default=logging.INFO, choices=[logging.DEBUG,logging.INFO,logging.WARNING,logging.ERROR,logging.CRITICAL], help="logging level, choices 10,20,30,40,50: default 20=logging.INFO")
+    parser.add_argument ("-l", "--loglevel", type=int, default=logging.DEBUG, choices=[logging.DEBUG,logging.INFO,logging.WARNING,logging.ERROR,logging.CRITICAL], help="logging level, choices 10,20,30,40,50: default 20=logging.INFO")
 
     return parser.parse_args()
 

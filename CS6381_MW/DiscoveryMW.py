@@ -189,6 +189,7 @@ class DiscoveryMW():
     def send_lookall_resp(self,publisherInfos):
         self.logger.info ("DiscoveryMW::send lookall response")
         lookall_resp=discovery_pb2.LookupAllPubResp ()
+        lookall_resp.status=discovery_pb2.STATUS_SUCCESS
         
         for publisherInfo in publisherInfos:
             newPublisherInfo=discovery_pb2.RegistrantInfo()
@@ -200,7 +201,7 @@ class DiscoveryMW():
         # Finally, build the outer layer DiscoveryResp Message
         self.logger.debug ("DiscoveryMW::lookall response - build the outer DiscoveryResp message")
         disc_resp = discovery_pb2.DiscoveryResp ()  # allocate
-        disc_resp.msg_type = discovery_pb2.TYPE_LOOKUP_PUB_BY_TOPIC  # set message type
+        disc_resp.msg_type = discovery_pb2.TYPE_LOOKUP_ALL_PUBS  # set message type
         # It was observed that we cannot directly assign the nested field here.
         # A way around is to use the CopyFrom method as shown
         disc_resp.lookall_resp.CopyFrom (lookall_resp)

@@ -84,7 +84,7 @@ class BrokerAppln():
             self.logger.debug ("BrokerAppln::driver - upcall handle")
             self.mw_obj.set_upcall_handle (self)
 
-            self.state = self.State.READY
+            self.state = self.State.REGISTER
 
             self.mw_obj.event_loop (timeout=0)  # start the event loop
 
@@ -180,16 +180,20 @@ class BrokerAppln():
     def lookall_response(self,lookall_resp):
         '''handle discovery response about publishers'''
         try:
-            self.logger.info ("BrokerAppln::lookall_response")
-            #return publishers which send topic to us
-            for publisherInfo in lookall_resp.publisherInfos:
-                # temporary store publishers in this structure
-                self.mw_obj.connect_pub(str(publisherInfo.addr)+':'+str(publisherInfo.port))
+            if lookall_resp.status == discovery_pb2.STATUS_SUCCESS:
+                self.logger.info ("BrokerAppln::lookall_response")
+                #return publishers which send topic to us
+                for publisherInfo in lookall_resp.publisherInfos:
+                    # temporary store publishers in this structure
+                    self.mw_obj.connect_pub(str(publisherInfo.addr)+':'+str(publisherInfo.port))
 
-            self.state = self.State.DISSEMINATE
-            # return a timeout of zero so that the event loop in its next iteration will immediately make
-            # an upcall to us
-            return 0
+                self.state = self.State.DISSEMINATE
+                # return a timeout of zero so that the event loop in its next iteration will immediately make
+                # an upcall to us
+                return 0
+            else:
+                self.logger.debug ("BrokerAppln::lookall_response - lookall is a failure")
+                raise ValueError ("Broker needs cannot get publishers")
             
         except Exception as e:
             raise e
@@ -232,7 +236,7 @@ def parseCmdLineArgs ():
 
     parser.add_argument ("-T", "--num_topics", type=int, choices=range(1,10), default=1, help="Number of topics to publish, currently restricted to max of 9")
     
-    parser.add_argument ("-l", "--loglevel", type=int, default=logging.INFO, choices=[logging.DEBUG,logging.INFO,logging.WARNING,logging.ERROR,logging.CRITICAL], help="logging level, choices 10,20,30,40,50: default 20=logging.INFO")
+    parser.add_argument ("-l", "--loglevel", type=int, default=logging.DEBUG, choices=[logging.DEBUG,logging.INFO,logging.WARNING,logging.ERROR,logging.CRITICAL], help="logging level, choices 10,20,30,40,50: default 20=logging.INFO")
 
     return parser.parse_args()
 

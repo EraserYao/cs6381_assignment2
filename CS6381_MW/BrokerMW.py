@@ -63,6 +63,7 @@ class BrokerMW():
 
             self.logger.debug ("BrokerMW::configure - register the REQ socket for incoming replies")
             self.poller.register (self.req, zmq.POLLIN)
+            self.poller.register (self.sub, zmq.POLLIN)
 
             self.logger.debug ("BrokerMW::configure - connect to Discovery service")
             # For our assignments we will use TCP. The connect string is made up of
@@ -263,3 +264,12 @@ class BrokerMW():
 
         except Exception as e:
           raise e
+    
+    def set_upcall_handle (self, upcall_obj):
+        ''' set upcall handle '''
+        self.upcall_obj = upcall_obj
+
+
+    def disable_event_loop (self):
+        ''' disable event loop '''
+        self.handle_events = False

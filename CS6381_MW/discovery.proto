@@ -114,6 +114,7 @@ message LookupAllPubReq
 // accordingly there will be a response to the above message
 message LookupAllPubResp
 {
+    Status status = 1;   // success or failure
     repeated RegistrantInfo publisherInfos=2;
 }
 
