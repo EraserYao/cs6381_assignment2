@@ -150,6 +150,10 @@ class BrokerMW():
             buf2send = disc_req.SerializeToString ()
             self.logger.debug ("Stringified serialized buf = {}".format (buf2send))
 
+            #VERY IMPORTANT!!!
+            for item in topiclist:
+                self.sub.setsockopt(zmq.SUBSCRIBE, bytes(item, "utf-8"))
+
             # now send this to our discovery service
             self.logger.debug ("BrokerMW::register - send stringified buffer to Discovery service")
             self.req.send (buf2send)  # we use the "send" method of ZMQ that sends the bytes
