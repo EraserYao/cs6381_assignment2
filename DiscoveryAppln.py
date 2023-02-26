@@ -66,7 +66,7 @@ class DiscoveryAppln():
         self.sub_data={}
         self.broker={}
         self.dissemination=None
-
+        self.discovery=None
         #DHT node
         self.disc_num=20
         self.m=48 # nodes in finger table
@@ -102,13 +102,14 @@ class DiscoveryAppln():
             config = configparser.ConfigParser ()
             config.read (args.config)
             self.dissemination = config["Dissemination"]["Strategy"]
+            self.discovery = config["Discovery"]["Strategy"]
 
             port=None
             addr=None
 
-            if self.dissemination=='Distributed':
+            if self.discovery=='Distributed':
                 port,addr=self.configure_DHT_logic(args)
-            elif self.dissemination=='Centralized':
+            elif self.discovery=='Centralized':
                 port=args.port
                 addr=args.addr
             # Now setup up our underlying middleware object to which we delegate
@@ -144,39 +145,42 @@ class DiscoveryAppln():
             raise e
     
     def configure_DHT_logic(self,args):
-        self.logger.info ("DiscoveryAppln::configure DHT")
-        self.logger.debug ("DiscoveryAppln::configure DHT - reading dht file")
-        self.json_file=args.json_file
-        dht_json=None
-        with open (self.json_file, "r") as f:
-            dht_db=json.loads (f)
-            dht_json=dht_db['dht']
-
-        # Config my host and hash
-        for dht_node in dht_json:
-            #append entity on dht node
-            self.dht[dht_node['hash']]=dht_node
-            self.hash_list.append(dht_node['hash'])
-            self.disc_data[dht_node['id']]=dht_node['IP']+':'+dht_node['port']
-            if dht_node['id']==self.name and dht_node['port']==args.port:
-                self.id=dht_node['id']
-                self.hash=dht_node['hash']
-                port=dht_node['port']
-                addr=dht_node['IP']
-                break
+        try:
+            self.logger.info ("DiscoveryAppln::configure DHT")
+            self.logger.debug ("DiscoveryAppln::configure DHT - reading dht file")
+            self.json_file=args.json_file
+            dht_json=None
+            with open (self.json_file, "r") as f:
+                dht_db=json.load (f)
+                dht_json=dht_db['dht']
     
-        # sort the hash list
-        self.hash_list.sort()
-        # get the number of 20 disc we in hash ring
-        for index in range(len(self.hash_list)):
-            if self.hash==self.hash_list[index]:
-                self.node_pos=index+1
-                break
-            
-        # configure the object
-        self.logger.debug ("DiscoveryAppln::configure DHT - generate finger table")
-        self.generate_finger_table ()
-        self.logger.info ("DiscoveryAppln::configure DHT complete")
+            # Config my host and hash
+            for dht_node in dht_json:
+                #append entity on dht node
+                self.dht[dht_node['hash']]=dht_node
+                self.hash_list.append(dht_node['hash'])
+                self.disc_data[dht_node['id']]=dht_node['IP']+':'+str(dht_node['port'])
+                if dht_node['id']==self.name and dht_node['port']==args.port:
+                    self.id=dht_node['id']
+                    self.hash=dht_node['hash']
+                    port=dht_node['port']
+                    addr=dht_node['IP']
+                    break
+                
+            # sort the hash list
+            self.hash_list.sort()
+            # get the number of 20 disc we in hash ring
+            for index in range(len(self.hash_list)):
+                if self.hash==self.hash_list[index]:
+                    self.node_pos=index+1
+                    break
+                
+            # configure the object
+            self.logger.debug ("DiscoveryAppln::configure DHT - generate finger table")
+            self.generate_finger_table ()
+            self.logger.info ("DiscoveryAppln::configure DHT complete")
+        except Exception as e:
+            raise e
         return port,addr
 
     def generate_finger_table(self):
@@ -380,13 +384,14 @@ class DiscoveryAppln():
             self.logger.info ("     name: {}".format (self.name))
             self.logger.info ("     Num of publisher: {}".format (self.pubnum))
             self.logger.info ("     Num of subscriber: {}".format (self.subnum))
-            self.logger.info ("------------------------------")
-            self.logger.info ("Finger Table::dump")
-            for key in self.finger_table:
-                value=self.finger_table[key]
+            if self.discovery=='Distributed':
                 self.logger.info ("------------------------------")
-                self.logger.info ("     Start: {}".format (key))
-                self.logger.info ("     Successor: {}".format (value))
+                self.logger.info ("Finger Table::dump")
+                for key in self.finger_table:
+                    value=self.finger_table[key]
+                    self.logger.info ("------------------------------")
+                    self.logger.info ("     Start: {}".format (key))
+                    self.logger.info ("     Successor: {}".format (value))
             self.logger.info ("**********************************")
         except Exception as e:
             raise e
