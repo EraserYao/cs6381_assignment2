@@ -29,7 +29,10 @@
 # then we are in a ready state and will respond with a true to is_ready method. Until then
 # it will be false.
 
-import argparse # for argument parsing
+import random # random number generation
+import hashlib  # for the secure hash library
+import argparse # argument parsing
+import json # for JSON
 import configparser # for configuration parsing
 import logging # for logging. Use it in place of print statements.
 
@@ -64,6 +67,26 @@ class DiscoveryAppln():
         self.broker={}
         self.dissemination=None
 
+        #DHT node
+        self.disc_num=20
+        self.m=48 # nodes in finger table
+        self.finger_table={}
+        self.json_file=None
+        self.id=None
+        self.hash=None
+        self.hash_list=[]
+        self.node_pos=None # start with 1
+        self.dht={}
+        self.disc_data={} # store each discovery ip:port
+
+        # self.dht structure
+        # key:hash
+        # value:dht_node
+
+        # self.disc_data structure
+        # key:disc id
+        # value:ip:port
+        
     def configure(self,args):
         try:
             self.logger.info ("DiscoveryAppln::configure")
@@ -80,11 +103,19 @@ class DiscoveryAppln():
             config.read (args.config)
             self.dissemination = config["Dissemination"]["Strategy"]
 
+            port=None
+            addr=None
+
+            if self.dissemination=='Distributed':
+                port,addr=self.configure_DHT_logic(args)
+            elif self.dissemination=='Centralized':
+                port=args.port
+                addr=args.addr
             # Now setup up our underlying middleware object to which we delegate
             # everything
             self.logger.debug ("DiscoveryAppln::configure - initialize the middleware object")
             self.mw_obj = DiscoveryMW (self.logger)
-            self.mw_obj.configure (args) # pass remainder of the args to the m/w object
+            self.mw_obj.configure (addr,port) # pass remainder of the args to the m/w object
             
             self.logger.info ("DiscoveryAppln::configure - configuration complete")
       
@@ -111,6 +142,80 @@ class DiscoveryAppln():
 
         except Exception as e:
             raise e
+    
+    def configure_DHT_logic(self,args):
+        self.logger.info ("DiscoveryAppln::configure DHT")
+        self.logger.debug ("DiscoveryAppln::configure DHT - reading dht file")
+        self.json_file=args.json_file
+        dht_json=None
+        with open (self.json_file, "r") as f:
+            dht_db=json.loads (f)
+            dht_json=dht_db['dht']
+
+        # Config my host and hash
+        for dht_node in dht_json:
+            #append entity on dht node
+            self.dht[dht_node['hash']]=dht_node
+            self.hash_list.append(dht_node['hash'])
+            self.disc_data[dht_node['id']]=dht_node['IP']+':'+dht_node['port']
+            if dht_node['id']==self.name and dht_node['port']==args.port:
+                self.id=dht_node['id']
+                self.hash=dht_node['hash']
+                port=dht_node['port']
+                addr=dht_node['IP']
+                break
+    
+        # sort the hash list
+        self.hash_list.sort()
+        # get the number of 20 disc we in hash ring
+        for index in range(len(self.hash_list)):
+            if self.hash==self.hash_list[index]:
+                self.node_pos=index+1
+                break
+            
+        # configure the object
+        self.logger.debug ("DiscoveryAppln::configure DHT - generate finger table")
+        self.generate_finger_table ()
+        self.logger.info ("DiscoveryAppln::configure DHT complete")
+        return port,addr
+
+    def generate_finger_table(self):
+        try:
+            self.logger.info ("DiscoveryAppln::generate_finger_table")
+            for i in range(self.m):
+                start=(self.hash+2**i)%(2**self.m)
+                self.finger_table[start]=self.find_next_node(start)
+
+            self.logger.info ("DiscoveryAppln::generate completed")
+
+        except Exception as e:
+            raise e
+
+    def find_next_node(self,start_node):
+        ''' start_node is hash value'''
+        if start_node>self.hash_list[-1]:
+            return self.hash_list[0]
+
+        for i in range(len(self.hash_list)-1):
+            if self.hash_list[i]<start_node and self.hash_list[i+1]>=start_node:
+                return self.hash_list[i+1]
+        
+        return self.hash_list[0]
+
+    def find_successor(self, n, key):
+        successor=self.finger_table[(self.hash+1)%(2**self.m)]
+        if key > n and key<=successor:
+            return successor
+        else:
+            n_preced=self.closest_preceding_node(key)
+            return self.find_successor(n_preced,key)
+
+    def closest_preceding_node(self, n, key):
+        for i in range(self.m,0,-1):
+            table_index=(self.hash+2**(i-1))%(2**self.m)
+            if self.finger_table[table_index]>n and self.finger_table[table_index]<key:
+                return self.finger_table[table_index]
+        return n
         
     def invoke_operation (self):
         ''' Invoke operating depending on state  '''
@@ -275,8 +380,14 @@ class DiscoveryAppln():
             self.logger.info ("     name: {}".format (self.name))
             self.logger.info ("     Num of publisher: {}".format (self.pubnum))
             self.logger.info ("     Num of subscriber: {}".format (self.subnum))
+            self.logger.info ("------------------------------")
+            self.logger.info ("Finger Table::dump")
+            for key in self.finger_table:
+                value=self.finger_table[key]
+                self.logger.info ("------------------------------")
+                self.logger.info ("     Start: {}".format (key))
+                self.logger.info ("     Successor: {}".format (value))
             self.logger.info ("**********************************")
-
         except Exception as e:
             raise e
         
@@ -305,6 +416,8 @@ def parseCmdLineArgs ():
     
     parser.add_argument ("-p", "--port", type=int, default=5555, help="Port number on which our underlying discovery ZMQ service runs, default=5555")
     
+    parser.add_argument ("-j", "--json_file", default="dht.json", help="JSON file with the database of all DHT nodes, default dht.json")
+
     parser.add_argument ("-c", "--config", default="config.ini", help="configuration file (default: config.ini)")
 
     parser.add_argument ("-l", "--loglevel", type=int, default=logging.DEBUG, choices=[logging.DEBUG,logging.INFO,logging.WARNING,logging.ERROR,logging.CRITICAL], help="logging level, choices 10,20,30,40,50: default 20=logging.INFO")
