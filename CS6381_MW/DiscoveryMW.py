@@ -27,12 +27,13 @@ class DiscoveryMW():
     def __init__ (self, logger):
         self.logger = logger  # internal logger for print statements
         self.rep = None # will be a ZMQ REP socket
-        self.req = None # will be a ZMQ REQ socket
+        self.req = [] # will be a ZMQ REQ socket
         self.poller = None # used to wait on incoming replies
         self.addr = None # our advertised IP address
         self.port = None # port num
         self.upcall_obj = None # handle to appln obj to handle appln-specific data
         self.handle_events = True # in general we keep going thru the event loop
+        self.m=48  #hash_bit
 
     def configure (self, addr, port):
         ''' Initialize the object '''
@@ -55,11 +56,13 @@ class DiscoveryMW():
 
             self.logger.debug ("DiscoveryMW::configure - obtain REP sockets")
             self.rep = context.socket (zmq.REP)
-            self.req = context.socket (zmq.REQ)
+            for i in range(self.m):
+                self.req.append(context.socket (zmq.REQ))
 
             self.logger.debug ("DiscoveryMW::configure - register the REQ socket for incoming replies")
             self.poller.register (self.rep, zmq.POLLIN)
-            self.poller.register (self.req, zmq.POLLIN)
+            for i in range(self.m):
+                self.poller.register (self.req[i], zmq.POLLIN)
 
             self.logger.debug ("DiscoveryMW::configure - bind the port")
             # For our assignments we will use TCP. The connect string is made up of
@@ -81,8 +84,9 @@ class DiscoveryMW():
                     timeout = self.upcall_obj.invoke_operation ()
                 elif self.rep in events:
                     timeout = self.handle_request ()
-                elif self.req in events:
-                    timeout = self.handle_reply ()
+                for i in range (len (self.req)):
+                    if self.req[i] in events:
+                        timeout = self.handle_reply ()
                 else:
                     raise Exception ("Unknown event after poll")
             self.logger.info ("DiscoveryMW::event_loop - out of the event loop")
@@ -113,16 +117,16 @@ class DiscoveryMW():
         try:
             self.logger.info ("DiscoveryMW::handle_reply")
             bytesRcvd = self.req.recv ()
-            disc_req = discovery_pb2.DiscoveryReq ()
-            disc_req.ParseFromString (bytesRcvd)
-            if (disc_req.msg_type == discovery_pb2.TYPE_REGISTER):
-                timeout = self.upcall_obj.register_request (disc_req.register_req)
-            elif (disc_req.msg_type == discovery_pb2.TYPE_ISREADY):
-                timeout = self.upcall_obj.isready_request (disc_req.isready_req)
-            elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_PUB_BY_TOPIC):
-                timeout = self.upcall_obj.lookup_request (disc_req.lookup_req)
-            elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_ALL_PUBS):
-                timeout = self.upcall_obj.lookall_request (disc_req.lookall_req)
+            disc_resp = discovery_pb2.DhtNodeResp ()
+            disc_resp.ParseFromString (bytesRcvd)
+            if (disc_resp.msg_type == discovery_pb2.DHT_REGISTER):
+                timeout = self.upcall_obj.register_response (disc_resp.register_req)
+            elif (disc_resp.msg_type == discovery_pb2.DHT_ISREADY):
+                timeout = self.upcall_obj.isready_response (disc_resp.isready_req)
+            elif (disc_resp.msg_type == discovery_pb2.DHT_LOOKUP_PUB_BY_TOPIC):
+                timeout = self.upcall_obj.lookup_response (disc_resp.lookup_req)
+            elif (disc_resp.msg_type == discovery_pb2.DHT_LOOKUP_ALL_PUBS):
+                timeout = self.upcall_obj.lookall_response (disc_resp.lookall_req)
             else:
                 raise ValueError ("Unrecognized request message")
             return timeout

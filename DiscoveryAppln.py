@@ -35,6 +35,7 @@ import argparse # argument parsing
 import json # for JSON
 import configparser # for configuration parsing
 import logging # for logging. Use it in place of print statements.
+import hashlib  # for the secure hash library
 
 # Now import our CS6381 Middleware
 from CS6381_MW.DiscoveryMW import DiscoveryMW
@@ -77,7 +78,6 @@ class DiscoveryAppln():
         self.hash_list=[]
         self.node_pos=None # start with 1
         self.dht={}
-        self.disc_data={} # store each discovery ip:port
 
         # self.dht structure
         # key:hash
@@ -86,7 +86,7 @@ class DiscoveryAppln():
         # self.disc_data structure
         # key:disc id
         # value:ip:port
-        
+
     def configure(self,args):
         try:
             self.logger.info ("DiscoveryAppln::configure")
@@ -104,14 +104,7 @@ class DiscoveryAppln():
             self.dissemination = config["Dissemination"]["Strategy"]
             self.discovery = config["Discovery"]["Strategy"]
 
-            port=None
-            addr=None
-
-            if self.discovery=='Distributed':
-                port,addr=self.configure_DHT_logic(args)
-            elif self.discovery=='Centralized':
-                port=args.port
-                addr=args.addr
+            port,addr=self.configure_DHT_logic(args)
             # Now setup up our underlying middleware object to which we delegate
             # everything
             self.logger.debug ("DiscoveryAppln::configure - initialize the middleware object")
@@ -144,6 +137,22 @@ class DiscoveryAppln():
         except Exception as e:
             raise e
     
+    #################
+    # hash value
+    #################
+    def hash_func (self, topic, id, addr):
+        self.logger.debug ("DiscoveryAppln::hash_func")
+
+        # first get the digest from hashlib and then take the desired number of bytes from the
+        # lower end of the 256 bits hash. Big or little endian does not matter.
+        hash_str=topic+":"+id+","+addr
+        hash_digest = hashlib.sha256 (bytes (hash_str, "utf-8")).digest ()  # this is how we get the digest or hash value
+        # figure out how many bytes to retrieve
+        num_bytes = int(self.m/8)  # otherwise we get float which we cannot use below
+        hash_val = int.from_bytes (hash_digest[:num_bytes], "big")  # take lower N number of bytes
+
+        return hash_val
+
     def configure_DHT_logic(self,args):
         try:
             self.logger.info ("DiscoveryAppln::configure DHT")
@@ -159,7 +168,6 @@ class DiscoveryAppln():
                 #append entity on dht node
                 self.dht[dht_node['hash']]=dht_node
                 self.hash_list.append(dht_node['hash'])
-                self.disc_data[dht_node['id']]=dht_node['IP']+':'+str(dht_node['port'])
                 if dht_node['id']==self.name and dht_node['port']==args.port:
                     self.id=dht_node['id']
                     self.hash=dht_node['hash']
@@ -212,7 +220,9 @@ class DiscoveryAppln():
             return successor
         else:
             n_preced=self.closest_preceding_node(key)
-            return self.find_successor(n_preced,key)
+            #we need send a request to n_preced
+            #return self.find_successor(n_preced,key)
+            return n_preced
 
     def closest_preceding_node(self, n, key):
         for i in range(self.m,0,-1):
@@ -252,7 +262,7 @@ class DiscoveryAppln():
 
         except Exception as e:
             raise e
-        
+    
     def register_request(self,reg_req):
         try:
             self.logger.info ("DiscoveryAppln::register")
@@ -260,18 +270,21 @@ class DiscoveryAppln():
             reason=None
             reg_info = discovery_pb2.RegistrantInfo ()
             reg_info.CopyFrom(reg_req.info)
+            #find which node should be stored
+            resp_info=[]
             if reg_req.role==discovery_pb2.ROLE_PUBLISHER:
                 pub_name=reg_info.id
-                if pub_name in self.pub_data.keys():
-                    status=discovery_pb2.STATUS_FAILURE
-                    reason='Name has already exits!'
-                else:
-                    self.cur_pubnum+=1
-                    status=discovery_pb2.STATUS_SUCCESS
-                    self.pub_data[pub_name]={}
-                    self.pub_data[pub_name]['addr']=reg_info.addr
-                    self.pub_data[pub_name]['port']=reg_info.port
-                    self.pub_data[pub_name]['topiclist']=reg_req.topiclist[:]
+                topiclist=reg_req.topiclist[:]
+                for topic in topiclist:
+                    hash_value=self.hash_func(topic,pub_name,reg_info.addr+':'+reg_info.port)
+                    target_node=self.find_successor(self.hash,hash_value)
+                    msg_status=None
+                    if self.finger_table[(self.hash+1)%(2**self.m)]==target_node:
+                        msg_status=discovery_pb2.TYPE_SUCCESSOR
+                    else:
+                        msg_status=discovery_pb2.TYPE_PRENODE
+                    disc_addr=self.dht[target_node]['IP']+':'+str(self.dht[target_node]['port'])
+                    
 
             elif reg_req.role==discovery_pb2.ROLE_SUBSCRIBER:
                 sub_name=reg_info.id
