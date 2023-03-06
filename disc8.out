@@ -1,0 +1,23 @@
+2023-03-06 01:10:53,459 - root - INFO - Main - acquire a child logger and then log messages in the child
+2023-03-06 01:10:53,499 - DiscoveryAppln - DEBUG - Main: parse command line arguments
+2023-03-06 01:10:53,548 - DiscoveryAppln - DEBUG - Main: resetting log level to 10
+2023-03-06 01:10:53,650 - DiscoveryAppln - DEBUG - Main: effective log level is 10
+2023-03-06 01:10:53,650 - DiscoveryAppln - DEBUG - Main: obtain the discovery appln object
+2023-03-06 01:10:53,660 - DiscoveryAppln - DEBUG - Main: configure the discovery appln object
+2023-03-06 01:10:53,660 - DiscoveryAppln - INFO - DiscoveryAppln::configure
+2023-03-06 01:10:53,660 - DiscoveryAppln - DEBUG - DiscoveryAppln::configure - parsing config.ini
+2023-03-06 01:10:53,661 - DiscoveryAppln - INFO - DiscoveryAppln::configure DHT
+2023-03-06 01:10:53,700 - DiscoveryAppln - DEBUG - DiscoveryAppln::configure DHT - reading dht file
+2023-03-06 01:10:53,704 - DiscoveryAppln - DEBUG - DiscoveryAppln::configure DHT - generate finger table
+2023-03-06 01:10:53,704 - DiscoveryAppln - INFO - DiscoveryAppln::generate_finger_table
+2023-03-06 01:10:53,706 - DiscoveryAppln - INFO - DiscoveryAppln::generate completed
+2023-03-06 01:10:53,708 - DiscoveryAppln - INFO - DiscoveryAppln::configure DHT complete
+2023-03-06 01:10:53,709 - DiscoveryAppln - DEBUG - DiscoveryAppln::configure - initialize the middleware object
+2023-03-06 01:10:53,709 - DiscoveryAppln - INFO - DiscoveryMW::configure
+2023-03-06 01:10:53,709 - DiscoveryAppln - DEBUG - DiscoveryMW::configure - obtain ZMQ context
+2023-03-06 01:10:53,709 - DiscoveryAppln - DEBUG - DiscoveryMW::configure - obtain the poller
+2023-03-06 01:10:53,730 - DiscoveryAppln - DEBUG - DiscoveryMW::configure - obtain REP sockets
+2023-03-06 01:10:53,773 - DiscoveryAppln - DEBUG - DiscoveryMW::configure - register the REQ socket for incoming replies
+2023-03-06 01:10:53,801 - DiscoveryAppln - DEBUG - DiscoveryMW::configure - bind the port
+2023-03-06 01:10:53,807 - DiscoveryAppln - DEBUG - DiscoveryAppln::configure 10.0.0.18:5555
+2023-03-06 01:10:53,818 - DiscoveryAppln - ERROR - Exception caught in main - Cannot assign requested address

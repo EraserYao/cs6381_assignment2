@@ -67,7 +67,7 @@ class DiscoveryMW():
             self.logger.debug ("DiscoveryMW::configure - bind the port")
             # For our assignments we will use TCP. The connect string is made up of
             # tcp:// followed by IP addr:port number.
-            bind_str = "tcp://*:" + str(self.port)
+            bind_str = "tcp://"+self.addr+":" + str(self.port)
             self.rep.bind (bind_str)
             self.logger.info ("DiscoveryMW::configure completed")
 
@@ -76,8 +76,8 @@ class DiscoveryMW():
         
     def connect_disc (self, index, discaddr):
         try:
-            self.logger.info ("DiscoveryMW::connect_disc - connect to publisher")
-            self.logger.debug ("DiscoveryMW::connect_disc - connect to the pub socket")
+            self.logger.info ("DiscoveryMW::connect_disc - connect to finger node {}".format(discaddr))
+            self.logger.debug ("DiscoveryMW::connect_disc - connect to the disc socket")
 
             connect_string = "tcp://" + str(discaddr)
             self.req[index].connect (connect_string)
