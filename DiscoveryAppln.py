@@ -271,16 +271,16 @@ class DiscoveryAppln():
     
     def chord_algurithm(self,disc_req):
         self.logger.info ("DiscoveryAppln::chord_algurithm")
-        hash_value=disc_req.dht_req.key
+        hash_value=disc_req.key
         index,target_node=self.find_successor(self.hash,hash_value)
-        DHT_type=None
+        node_type=None
         status=discovery_pb2.STATUS_SUCCESS
         if self.finger_table[(self.hash+1)%(2**self.m)]==target_node:
-            DHT_type=discovery_pb2.TYPE_SUCCESSOR
+            node_type=discovery_pb2.TYPE_SUCCESSOR
         else:
-            DHT_type=discovery_pb2.TYPE_PRENODE
+            node_type=discovery_pb2.TYPE_PRENODE
         if index!=-1:
-            self.mw_obj.relay_chord_req(status,index,DHT_type,hash_value,disc_req)
+            self.mw_obj.relay_chord_req(status,index,node_type,hash_value,disc_req)
 
     def register_request_encode(self,reg_req):
         try:
@@ -294,13 +294,13 @@ class DiscoveryAppln():
             for topic in topiclist:
                 hash_value=self.hash_func(topic,name)
                 index, target_node=self.find_successor(self.hash,hash_value)
-                DHT_type=None
+                node_type=None
                 if self.finger_table[(self.hash+1)%(2**self.m)]==target_node:
-                    DHT_type=discovery_pb2.TYPE_SUCCESSOR
+                    node_type=discovery_pb2.TYPE_SUCCESSOR
                 else:
-                    DHT_type=discovery_pb2.TYPE_PRENODE
+                    node_type=discovery_pb2.TYPE_PRENODE
                 if index!=-1:
-                    self.mw_obj.send_chord_register_req(status,index,DHT_type,hash_value,reg_info)
+                    self.mw_obj.send_chord_register_req(status,index,node_type,hash_value,reg_info)
 
             #waiting for chord reply 
             return None

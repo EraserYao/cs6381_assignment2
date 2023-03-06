@@ -113,13 +113,13 @@ class DiscoveryMW():
             disc_req.ParseFromString (bytesRcvd)
             if(disc_req.dht_type==discovery_pb2.TYPE_SUCCESSOR):
                 if (disc_req.msg_type == discovery_pb2.TYPE_REGISTER):
-                    timeout = self.upcall_obj.register_request (disc_req.dht_req.register_req)
+                    timeout = self.upcall_obj.register_request (disc_req.register_req)
                 elif (disc_req.msg_type == discovery_pb2.TYPE_ISREADY):
-                    timeout = self.upcall_obj.isready_request (disc_req.dht_req.isready_req)
+                    timeout = self.upcall_obj.isready_request (disc_req.isready_req)
                 elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_PUB_BY_TOPIC):
-                    timeout = self.upcall_obj.lookup_request (disc_req.dht_req.lookup_req)
+                    timeout = self.upcall_obj.lookup_request (disc_req.lookup_req)
                 elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_ALL_PUBS):
-                    timeout = self.upcall_obj.lookall_request (disc_req.dht_req.lookall_req)
+                    timeout = self.upcall_obj.lookall_request (disc_req.lookall_req)
             elif(disc_req.dht_type==discovery_pb2.TYPE_PRENODE):
                 timeout = self.upcall_obj.chord_algurithm (disc_req)
             elif(disc_req.dht_type==discovery_pb2.TYPE_INITIAL):
@@ -137,11 +137,10 @@ class DiscoveryMW():
         except Exception as e:
             raise e
 
-    def handle_reply (self, index, DHT_type):
+    def handle_reply (self, index):
         try:
             self.logger.info ("DiscoveryMW::handle_reply")
             bytesRcvd = self.req[index].recv ()
-
             # relay response here
             self.logger.debug ("DiscoveryMW::transmit DHT data")
             self.rep.send(bytesRcvd)
@@ -149,14 +148,13 @@ class DiscoveryMW():
         except Exception as e:
             raise e
 
-    def relay_chord_req(self,index,DHT_type,disc_req):
+    def relay_chord_req(self,index,node_type,disc_req):
         self.logger.info ("DiscoveryMW::relay DHT request")
 
         self.logger.debug ("DiscoveryMW::relay DHT request - build the outer DiscoveryReq message")
         relay_disc_req = discovery_pb2.DiscoveryReq ()  # allocate
-        relay_disc_req.msg_type=disc_req.msg_type
-        relay_disc_req.dht_type=DHT_type
-        relay_disc_req.dht_req.CopyFrom (disc_req.dht_req)
+        relay_disc_req.CopyFrom (disc_req)
+        relay_disc_req.node_type=node_type
         self.logger.debug ("DiscoveryMW::send DHT register request - done building the outer message")
 
         buf2send = relay_disc_req.SerializeToString ()
@@ -169,20 +167,15 @@ class DiscoveryMW():
         # now go to our event loop to receive a response to this request
         self.logger.info ("DiscoveryMW::end DHT register request - sent response message")
 
-    def send_chord_register_req(self,index,DHT_type,hash_value,register_req):
+    def send_chord_register_req(self,index,node_type,hash_value,register_req):
         self.logger.info ("DiscoveryMW::send DHT register request")
-
-        self.logger.debug ("DiscoveryMW::send DHT register request - build the outer DHTReq message")
-        dht_req= discovery_pb2.DHTReq () 
-        dht_req.key=hash_value
-        dht_req.register_req.CopyFrom (register_req)
-        self.logger.debug ("DiscoveryMW::send DHT register request - done building the DHTReq message")
 
         self.logger.debug ("DiscoveryMW::send DHT register request - build the outer DiscoveryReq message")
         disc_req = discovery_pb2.DiscoveryReq ()  # allocate
         disc_req.msg_type=discovery_pb2.TYPE_REGISTER
-        disc_req.dht_type=DHT_type
-        disc_req.dht_req.CopyFrom (dht_req)
+        disc_req.node_type=node_type
+        disc_req.key=hash_value
+        disc_req.register_req.CopyFrom (register_req)
         self.logger.debug ("DiscoveryMW::send DHT register request - done building the outer message")
 
         buf2send = disc_req.SerializeToString ()
