@@ -154,6 +154,7 @@ class SubscriberMW():
             self.logger.debug ("SubscriberMW::register - build the outer DiscoveryReq message")
             disc_req = discovery_pb2.DiscoveryReq ()  # allocate
             disc_req.msg_type = discovery_pb2.TYPE_REGISTER  # set message type
+            disc_req.dht_type=discovery_pb2.TYPE_INITIAL
             disc_req.register_req.CopyFrom (register_req)
             self.logger.debug ("SubscriberMW::register - done building the outer message")
 
@@ -190,6 +191,7 @@ class SubscriberMW():
             self.logger.debug ("SubscriberMW::lookup - build the outer DiscoveryReq message")
             disc_req = discovery_pb2.DiscoveryReq ()  # allocate
             disc_req.msg_type = discovery_pb2.TYPE_LOOKUP_PUB_BY_TOPIC  # set message type
+            disc_req.dht_type=discovery_pb2.TYPE_INITIAL
             disc_req.lookup_req.CopyFrom (lookup_req)
             self.logger.debug ("SubscriberMW::lookup - done building the outer message")
 

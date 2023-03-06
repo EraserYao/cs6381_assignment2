@@ -142,6 +142,7 @@ class BrokerMW():
             self.logger.debug ("BrokerMW::register - build the outer DiscoveryReq message")
             disc_req = discovery_pb2.DiscoveryReq ()  # allocate
             disc_req.msg_type = discovery_pb2.TYPE_REGISTER  # set message type
+            disc_req.dht_type=discovery_pb2.TYPE_INITIAL
             disc_req.register_req.CopyFrom (register_req)
             self.logger.debug ("BrokerMW::register - done building the outer message")
 
@@ -180,6 +181,7 @@ class BrokerMW():
             self.logger.debug ("BrokerMW::is_ready - build the outer DiscoveryReq message")
             disc_req = discovery_pb2.DiscoveryReq ()
             disc_req.msg_type = discovery_pb2.TYPE_ISREADY
+            disc_req.dht_type=discovery_pb2.TYPE_INITIAL
             # It was observed that we cannot directly assign the nested field here.
             # A way around is to use the CopyFrom method as shown
             disc_req.isready_req.CopyFrom (isready_req)
@@ -213,6 +215,7 @@ class BrokerMW():
             self.logger.debug ("BrokerMW::lookup - build the outer DiscoveryReq message")
             disc_req = discovery_pb2.DiscoveryReq ()  # allocate
             disc_req.msg_type = discovery_pb2.TYPE_LOOKUP_ALL_PUBS  # set message type
+            disc_req.dht_type=discovery_pb2.TYPE_INITIAL
             disc_req.lookall_req.CopyFrom (lookall_req)
             self.logger.debug ("BrokerMW::lookup - done building the outer message")
 

@@ -111,6 +111,12 @@ class DiscoveryAppln():
             self.mw_obj = DiscoveryMW (self.logger)
             self.mw_obj.configure (addr,port) # pass remainder of the args to the m/w object
             
+            self.logger.debug ("DiscoveryAppln::configure - connect to all finger nodes")
+            for index in range(self.m):
+                finger_node=self.finger_table[(self.hash+2**index)%(2**self.m)]
+                disc_addr=self.dht[finger_node]['IP']+':'+str(self.dht[finger_node]['port'])
+                self.mw_obj.connect_disc(index,disc_addr)
+
             self.logger.info ("DiscoveryAppln::configure - configuration complete")
       
         except Exception as e:
@@ -140,12 +146,12 @@ class DiscoveryAppln():
     #################
     # hash value
     #################
-    def hash_func (self, topic, id, addr):
+    def hash_func (self, topic, name):
         self.logger.debug ("DiscoveryAppln::hash_func")
 
         # first get the digest from hashlib and then take the desired number of bytes from the
         # lower end of the 256 bits hash. Big or little endian does not matter.
-        hash_str=topic+":"+id+","+addr
+        hash_str=topic+":"+name
         hash_digest = hashlib.sha256 (bytes (hash_str, "utf-8")).digest ()  # this is how we get the digest or hash value
         # figure out how many bytes to retrieve
         num_bytes = int(self.m/8)  # otherwise we get float which we cannot use below
@@ -217,19 +223,19 @@ class DiscoveryAppln():
     def find_successor(self, n, key):
         successor=self.finger_table[(self.hash+1)%(2**self.m)]
         if key > n and key<=successor:
-            return successor
+            return 0, successor
         else:
-            n_preced=self.closest_preceding_node(key)
+            index, n_preced=self.closest_preceding_node(n, key)
             #we need send a request to n_preced
             #return self.find_successor(n_preced,key)
-            return n_preced
+            return index, n_preced
 
     def closest_preceding_node(self, n, key):
         for i in range(self.m,0,-1):
             table_index=(self.hash+2**(i-1))%(2**self.m)
             if self.finger_table[table_index]>n and self.finger_table[table_index]<key:
-                return self.finger_table[table_index]
-        return n
+                return i, self.finger_table[table_index]
+        return -1, n
         
     def invoke_operation (self):
         ''' Invoke operating depending on state  '''
@@ -263,6 +269,45 @@ class DiscoveryAppln():
         except Exception as e:
             raise e
     
+    def chord_algurithm(self,disc_req):
+        self.logger.info ("DiscoveryAppln::chord_algurithm")
+        hash_value=disc_req.dht_req.key
+        index,target_node=self.find_successor(self.hash,hash_value)
+        DHT_type=None
+        status=discovery_pb2.STATUS_SUCCESS
+        if self.finger_table[(self.hash+1)%(2**self.m)]==target_node:
+            DHT_type=discovery_pb2.TYPE_SUCCESSOR
+        else:
+            DHT_type=discovery_pb2.TYPE_PRENODE
+        if index!=-1:
+            self.mw_obj.relay_chord_req(status,index,DHT_type,hash_value,disc_req)
+
+    def register_request_encode(self,reg_req):
+        try:
+            self.logger.info ("DiscoveryAppln::register")
+            status=discovery_pb2.STATUS_SUCCESS
+            reg_info = discovery_pb2.RegistrantInfo ()
+            reg_info.CopyFrom(reg_req.info)
+            #find which node should be stored
+            name=reg_info.id
+            topiclist=reg_req.topiclist[:]
+            for topic in topiclist:
+                hash_value=self.hash_func(topic,name)
+                index, target_node=self.find_successor(self.hash,hash_value)
+                DHT_type=None
+                if self.finger_table[(self.hash+1)%(2**self.m)]==target_node:
+                    DHT_type=discovery_pb2.TYPE_SUCCESSOR
+                else:
+                    DHT_type=discovery_pb2.TYPE_PRENODE
+                if index!=-1:
+                    self.mw_obj.send_chord_register_req(status,index,DHT_type,hash_value,reg_info)
+
+            #waiting for chord reply 
+            return None
+            
+        except Exception as e:
+            raise e
+
     def register_request(self,reg_req):
         try:
             self.logger.info ("DiscoveryAppln::register")
@@ -270,21 +315,18 @@ class DiscoveryAppln():
             reason=None
             reg_info = discovery_pb2.RegistrantInfo ()
             reg_info.CopyFrom(reg_req.info)
-            #find which node should be stored
-            resp_info=[]
             if reg_req.role==discovery_pb2.ROLE_PUBLISHER:
                 pub_name=reg_info.id
-                topiclist=reg_req.topiclist[:]
-                for topic in topiclist:
-                    hash_value=self.hash_func(topic,pub_name,reg_info.addr+':'+reg_info.port)
-                    target_node=self.find_successor(self.hash,hash_value)
-                    msg_status=None
-                    if self.finger_table[(self.hash+1)%(2**self.m)]==target_node:
-                        msg_status=discovery_pb2.TYPE_SUCCESSOR
-                    else:
-                        msg_status=discovery_pb2.TYPE_PRENODE
-                    disc_addr=self.dht[target_node]['IP']+':'+str(self.dht[target_node]['port'])
-                    
+                if pub_name in self.pub_data.keys():
+                    status=discovery_pb2.STATUS_FAILURE
+                    reason='Name has already exits!'
+                else:
+                    self.cur_pubnum+=1
+                    status=discovery_pb2.STATUS_SUCCESS
+                    self.pub_data[pub_name]={}
+                    self.pub_data[pub_name]['addr']=reg_info.addr
+                    self.pub_data[pub_name]['port']=reg_info.port
+                    self.pub_data[pub_name]['topiclist']=reg_req.topiclist[:]
 
             elif reg_req.role==discovery_pb2.ROLE_SUBSCRIBER:
                 sub_name=reg_info.id

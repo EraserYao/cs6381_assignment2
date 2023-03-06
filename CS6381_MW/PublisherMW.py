@@ -238,6 +238,7 @@ class PublisherMW ():
       self.logger.debug ("PublisherMW::register - build the outer DiscoveryReq message")
       disc_req = discovery_pb2.DiscoveryReq ()  # allocate
       disc_req.msg_type = discovery_pb2.TYPE_REGISTER  # set message type
+      disc_req.dht_type=discovery_pb2.TYPE_INITIAL
       # It was observed that we cannot directly assign the nested field here.
       # A way around is to use the CopyFrom method as shown
       disc_req.register_req.CopyFrom (register_req)
@@ -288,6 +289,7 @@ class PublisherMW ():
       self.logger.debug ("PublisherMW::is_ready - build the outer DiscoveryReq message")
       disc_req = discovery_pb2.DiscoveryReq ()
       disc_req.msg_type = discovery_pb2.TYPE_ISREADY
+      disc_req.dht_type=discovery_pb2.TYPE_INITIAL
       # It was observed that we cannot directly assign the nested field here.
       # A way around is to use the CopyFrom method as shown
       disc_req.isready_req.CopyFrom (isready_req)

@@ -38,7 +38,7 @@ enum MsgTypes {
      // anything more
 }
 
-enum MsgStatus {
+enum DHTTypes {
     TYPE_SUCCESSOR = 0;
     TYPE_PRENODE = 1;
     TYPE_INITIAL=2;
@@ -124,59 +124,58 @@ message LookupAllPubResp
     repeated RegistrantInfo publisherInfos=2;
 }
 
+message DHTReq
+{
+    int64 key=1;
+    oneof Content {
+            RegisterReq register_req = 2;
+            IsReadyReq isready_req = 3;
+            LookupPubByTopicReq lookup_req = 4;
+            LookupAllPubReq lookall_req=5;
+              // add more 
+        }
+}
+
+message DHTResp
+{
+    int64 key=1;
+    oneof Content {
+        RegisterResp register_resp = 2;
+        IsReadyResp isready_resp = 3;
+        LookupPubByTopicResp lookup_resp = 4;
+        LookupAllPubResp lookall_resp=5;
+    }
+}
+
 // Finally, we are going to make a union of all these request and response messages
 
 // Discovery message (one of many)
-// message DiscoveryReq
-// {
-//         MsgTypes msg_type = 1;
-//         oneof Content {
-//               RegisterReq register_req = 2;
-//               IsReadyReq isready_req = 3;
-//               LookupPubByTopicReq lookup_req = 4;
-//               LookupAllPubReq lookall_req=5;
-//               // add more 
-//         }
-// }
-
-// // Response to discovery req will be similar oneof of the responses.
-// message DiscoveryResp
-// {
-//         MsgTypes msg_type = 1;
-//         oneof Content {
-//               RegisterResp register_resp = 2;
-//               IsReadyResp isready_resp = 3;
-//               LookupPubByTopicResp lookup_resp = 4;
-//               LookupAllPubResp lookall_resp=5;
-//               // add more 
-//         }
-// }
 
 message DiscoveryReq
 {
-        MsgStatus msg_status=1;    
+        DHTTypes dht_type=1;    
         MsgTypes msg_type = 2;    
-        int64 key=3;
         oneof Content {
-            RegisterReq register_req = 4;
-            IsReadyReq isready_req = 5;
-            LookupPubByTopicReq lookup_req = 6;
-            LookupAllPubReq lookall_req=7;
+            RegisterReq register_req = 3;
+            IsReadyReq isready_req = 4;
+            LookupPubByTopicReq lookup_req = 5;
+            LookupAllPubReq lookall_req=6;
               // add more 
+            DHTReq dht_req = 7;
         }
 }
 
 message DiscoveryResp
 {
-        MsgStatus msg_status=1;
+        DHTTypes dht_type=1;
         MsgTypes msg_type = 2;
-        int64 key=3;
         oneof Content {
-            RegisterResp register_resp = 4;
-            IsReadyResp isready_resp = 5;
-            LookupPubByTopicResp lookup_resp = 6;
-            LookupAllPubResp lookall_resp=7;
+            RegisterResp register_resp = 3;
+            IsReadyResp isready_resp = 4;
+            LookupPubByTopicResp lookup_resp = 5;
+            LookupAllPubResp lookall_resp=6;
               // add more 
+            DHTResp dht_resp = 7;
         }
 }
 //protoc --proto_path=./ --python_out=./ discovery.proto

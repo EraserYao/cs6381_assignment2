@@ -74,6 +74,18 @@ class DiscoveryMW():
         except Exception as e:
             raise e
         
+    def connect_disc (self, index, discaddr):
+        try:
+            self.logger.info ("DiscoveryMW::connect_disc - connect to publisher")
+            self.logger.debug ("DiscoveryMW::connect_disc - connect to the pub socket")
+
+            connect_string = "tcp://" + str(discaddr)
+            self.req[index].connect (connect_string)
+ 
+            self.logger.debug ("DiscoveryMW::connect_disc complete")
+        except Exception as e:
+            raise e
+
     def event_loop (self, timeout=None):
         try:
             self.logger.info ("DiscoveryMW::event_loop - run the event loop")
@@ -86,7 +98,7 @@ class DiscoveryMW():
                     timeout = self.handle_request ()
                 for i in range (len (self.req)):
                     if self.req[i] in events:
-                        timeout = self.handle_reply ()
+                        timeout = self.handle_reply (i)
                 else:
                     raise Exception ("Unknown event after poll")
             self.logger.info ("DiscoveryMW::event_loop - out of the event loop")
@@ -99,39 +111,89 @@ class DiscoveryMW():
             bytesRcvd = self.rep.recv ()
             disc_req = discovery_pb2.DiscoveryReq ()
             disc_req.ParseFromString (bytesRcvd)
-            if (disc_req.msg_type == discovery_pb2.TYPE_REGISTER):
-                timeout = self.upcall_obj.register_request (disc_req.register_req)
-            elif (disc_req.msg_type == discovery_pb2.TYPE_ISREADY):
-                timeout = self.upcall_obj.isready_request (disc_req.isready_req)
-            elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_PUB_BY_TOPIC):
-                timeout = self.upcall_obj.lookup_request (disc_req.lookup_req)
-            elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_ALL_PUBS):
-                timeout = self.upcall_obj.lookall_request (disc_req.lookall_req)
+            if(disc_req.dht_type==discovery_pb2.TYPE_SUCCESSOR):
+                if (disc_req.msg_type == discovery_pb2.TYPE_REGISTER):
+                    timeout = self.upcall_obj.register_request (disc_req.dht_req.register_req)
+                elif (disc_req.msg_type == discovery_pb2.TYPE_ISREADY):
+                    timeout = self.upcall_obj.isready_request (disc_req.dht_req.isready_req)
+                elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_PUB_BY_TOPIC):
+                    timeout = self.upcall_obj.lookup_request (disc_req.dht_req.lookup_req)
+                elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_ALL_PUBS):
+                    timeout = self.upcall_obj.lookall_request (disc_req.dht_req.lookall_req)
+            elif(disc_req.dht_type==discovery_pb2.TYPE_PRENODE):
+                timeout = self.upcall_obj.chord_algurithm (disc_req)
+            elif(disc_req.dht_type==discovery_pb2.TYPE_INITIAL):
+                if (disc_req.msg_type == discovery_pb2.TYPE_REGISTER):
+                    timeout = self.upcall_obj.register_request_encode (disc_req.register_req)
+                elif (disc_req.msg_type == discovery_pb2.TYPE_ISREADY):
+                    timeout = self.upcall_obj.isready_request_encode (disc_req.isready_req)
+                elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_PUB_BY_TOPIC):
+                    timeout = self.upcall_obj.lookup_request_encode (disc_req.lookup_req)
+                elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_ALL_PUBS):
+                    timeout = self.upcall_obj.lookall_request_encode (disc_req.lookall_req)
             else:
                 raise ValueError ("Unrecognized request message")
             return timeout
         except Exception as e:
             raise e
 
-    def handle_reply (self):
+    def handle_reply (self, index, DHT_type):
         try:
             self.logger.info ("DiscoveryMW::handle_reply")
-            bytesRcvd = self.req.recv ()
-            disc_resp = discovery_pb2.DhtNodeResp ()
-            disc_resp.ParseFromString (bytesRcvd)
-            if (disc_resp.msg_type == discovery_pb2.DHT_REGISTER):
-                timeout = self.upcall_obj.register_response (disc_resp.register_req)
-            elif (disc_resp.msg_type == discovery_pb2.DHT_ISREADY):
-                timeout = self.upcall_obj.isready_response (disc_resp.isready_req)
-            elif (disc_resp.msg_type == discovery_pb2.DHT_LOOKUP_PUB_BY_TOPIC):
-                timeout = self.upcall_obj.lookup_response (disc_resp.lookup_req)
-            elif (disc_resp.msg_type == discovery_pb2.DHT_LOOKUP_ALL_PUBS):
-                timeout = self.upcall_obj.lookall_response (disc_resp.lookall_req)
-            else:
-                raise ValueError ("Unrecognized request message")
-            return timeout
+            bytesRcvd = self.req[index].recv ()
+
+            # relay response here
+            self.logger.debug ("DiscoveryMW::transmit DHT data")
+            self.rep.send(bytesRcvd)
+            return None
         except Exception as e:
             raise e
+
+    def relay_chord_req(self,index,DHT_type,disc_req):
+        self.logger.info ("DiscoveryMW::relay DHT request")
+
+        self.logger.debug ("DiscoveryMW::relay DHT request - build the outer DiscoveryReq message")
+        relay_disc_req = discovery_pb2.DiscoveryReq ()  # allocate
+        relay_disc_req.msg_type=disc_req.msg_type
+        relay_disc_req.dht_type=DHT_type
+        relay_disc_req.dht_req.CopyFrom (disc_req.dht_req)
+        self.logger.debug ("DiscoveryMW::send DHT register request - done building the outer message")
+
+        buf2send = relay_disc_req.SerializeToString ()
+        self.logger.debug ("Stringified serialized buf = {}".format (buf2send))
+
+        # now send this to our discovery service
+        self.logger.debug ("DiscoveryMW::end DHT register request - send stringified buffer")
+        self.req[index].send (buf2send)  # we use the "send" method of ZMQ that sends the bytes
+
+        # now go to our event loop to receive a response to this request
+        self.logger.info ("DiscoveryMW::end DHT register request - sent response message")
+
+    def send_chord_register_req(self,index,DHT_type,hash_value,register_req):
+        self.logger.info ("DiscoveryMW::send DHT register request")
+
+        self.logger.debug ("DiscoveryMW::send DHT register request - build the outer DHTReq message")
+        dht_req= discovery_pb2.DHTReq () 
+        dht_req.key=hash_value
+        dht_req.register_req.CopyFrom (register_req)
+        self.logger.debug ("DiscoveryMW::send DHT register request - done building the DHTReq message")
+
+        self.logger.debug ("DiscoveryMW::send DHT register request - build the outer DiscoveryReq message")
+        disc_req = discovery_pb2.DiscoveryReq ()  # allocate
+        disc_req.msg_type=discovery_pb2.TYPE_REGISTER
+        disc_req.dht_type=DHT_type
+        disc_req.dht_req.CopyFrom (dht_req)
+        self.logger.debug ("DiscoveryMW::send DHT register request - done building the outer message")
+
+        buf2send = disc_req.SerializeToString ()
+        self.logger.debug ("Stringified serialized buf = {}".format (buf2send))
+
+        # now send this to our discovery service
+        self.logger.debug ("DiscoveryMW::end DHT register request - send stringified buffer")
+        self.req[index].send (buf2send)  # we use the "send" method of ZMQ that sends the bytes
+
+        # now go to our event loop to receive a response to this request
+        self.logger.info ("DiscoveryMW::end DHT register request - sent response message")
 
     def send_register_resp(self,status,reason):
         self.logger.info ("DiscoveryMW::send register response")
