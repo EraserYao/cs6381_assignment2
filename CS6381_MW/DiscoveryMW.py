@@ -120,7 +120,7 @@ class DiscoveryMW():
                     timeout = self.upcall_obj.lookup_request (disc_req.lookup_req)
                 elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_ALL_PUBS):
                     timeout = self.upcall_obj.lookall_request (disc_req.lookall_req)
-            elif(disc_req.dht_type==discovery_pb2.TYPE_PRENODE):
+            elif(disc_req.dht_type==discovery_pb2.TYPE_RELAY):
                 timeout = self.upcall_obj.chord_algurithm (disc_req)
             elif(disc_req.dht_type==discovery_pb2.TYPE_INITIAL):
                 if (disc_req.msg_type == discovery_pb2.TYPE_REGISTER):
@@ -167,7 +167,7 @@ class DiscoveryMW():
         # now go to our event loop to receive a response to this request
         self.logger.info ("DiscoveryMW::end DHT register request - sent response message")
 
-    def send_chord_register_req(self,index,node_type,hash_value,register_req):
+    def send_chord_register_req(self,index,node_type,hash_value,register_req,topic):
         self.logger.info ("DiscoveryMW::send DHT register request")
 
         self.logger.debug ("DiscoveryMW::send DHT register request - build the outer DiscoveryReq message")
@@ -175,6 +175,7 @@ class DiscoveryMW():
         disc_req.msg_type=discovery_pb2.TYPE_REGISTER
         disc_req.node_type=node_type
         disc_req.key=hash_value
+        register_req.topiclist=topic
         disc_req.register_req.CopyFrom (register_req)
         self.logger.debug ("DiscoveryMW::send DHT register request - done building the outer message")
 

@@ -71,7 +71,7 @@ class DiscoveryAppln():
         #DHT node
         self.disc_num=20
         self.m=48 # nodes in finger table
-        self.finger_table={}
+        self.finger_table=[]
         self.json_file=None
         self.id=None
         self.hash=None
@@ -202,7 +202,10 @@ class DiscoveryAppln():
             self.logger.info ("DiscoveryAppln::generate_finger_table")
             for i in range(self.m):
                 start=(self.hash+2**i)%(2**self.m)
-                self.finger_table[start]=self.find_next_node(start)
+                finger_nodes=[] # start,target
+                finger_nodes.append(start)
+                finger_nodes.append(self.find_next_node(start))
+                self.finger_table.append(finger_nodes)
 
             self.logger.info ("DiscoveryAppln::generate completed")
 
@@ -221,21 +224,20 @@ class DiscoveryAppln():
         return self.hash_list[0]
 
     def find_successor(self, n, key):
-        successor=self.finger_table[(self.hash+1)%(2**self.m)]
+        successor=self.finger_table[0][1]
         if key > n and key<=successor:
-            return 0, successor
+            return 0
         else:
-            index, n_preced=self.closest_preceding_node(n, key)
+            n_preced=self.closest_preceding_node(n, key)
             #we need send a request to n_preced
             #return self.find_successor(n_preced,key)
-            return index, n_preced
+            return n_preced
 
     def closest_preceding_node(self, n, key):
-        for i in range(self.m,0,-1):
-            table_index=(self.hash+2**(i-1))%(2**self.m)
-            if self.finger_table[table_index]>n and self.finger_table[table_index]<key:
-                return i, self.finger_table[table_index]
-        return -1, n
+        for i in range(self.m-1,-1,-1):
+            if self.finger_table[i][1]>n and self.finger_table[i][1]<key:
+                return i
+        return n
         
     def invoke_operation (self):
         ''' Invoke operating depending on state  '''
@@ -272,35 +274,30 @@ class DiscoveryAppln():
     def chord_algurithm(self,disc_req):
         self.logger.info ("DiscoveryAppln::chord_algurithm")
         hash_value=disc_req.key
-        index,target_node=self.find_successor(self.hash,hash_value)
+        index=self.find_successor(self.hash,hash_value)
         node_type=None
         status=discovery_pb2.STATUS_SUCCESS
-        if self.finger_table[(self.hash+1)%(2**self.m)]==target_node:
+        if index==0:
             node_type=discovery_pb2.TYPE_SUCCESSOR
         else:
             node_type=discovery_pb2.TYPE_PRENODE
-        if index!=-1:
-            self.mw_obj.relay_chord_req(status,index,node_type,hash_value,disc_req)
+        self.mw_obj.relay_chord_req(status,index,node_type,hash_value,disc_req)
 
     def register_request_encode(self,reg_req):
         try:
             self.logger.info ("DiscoveryAppln::register")
-            status=discovery_pb2.STATUS_SUCCESS
-            reg_info = discovery_pb2.RegistrantInfo ()
-            reg_info.CopyFrom(reg_req.info)
             #find which node should be stored
-            name=reg_info.id
+            name=reg_req.info.id
             topiclist=reg_req.topiclist[:]
             for topic in topiclist:
                 hash_value=self.hash_func(topic,name)
-                index, target_node=self.find_successor(self.hash,hash_value)
+                index=self.find_successor(self.hash,hash_value)
                 node_type=None
-                if self.finger_table[(self.hash+1)%(2**self.m)]==target_node:
+                if index==0:
                     node_type=discovery_pb2.TYPE_SUCCESSOR
                 else:
-                    node_type=discovery_pb2.TYPE_PRENODE
-                if index!=-1:
-                    self.mw_obj.send_chord_register_req(status,index,node_type,hash_value,reg_info)
+                    node_type=discovery_pb2.TYPE_RELAY
+                self.mw_obj.send_chord_register_req(index,node_type,hash_value,reg_req,topic)
 
             #waiting for chord reply 
             return None

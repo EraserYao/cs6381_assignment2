@@ -40,7 +40,7 @@ enum MsgTypes {
 
 enum NodeTypes {
     TYPE_SUCCESSOR = 0;
-    TYPE_PRENODE = 1;
+    TYPE_RELAY = 1;
     TYPE_INITIAL=2;
 }
 
