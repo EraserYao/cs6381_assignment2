@@ -146,12 +146,12 @@ class DiscoveryAppln():
     #################
     # hash value
     #################
-    def hash_func (self, topic, name):
+    def hash_func (self, topic):
         self.logger.debug ("DiscoveryAppln::hash_func")
 
         # first get the digest from hashlib and then take the desired number of bytes from the
         # lower end of the 256 bits hash. Big or little endian does not matter.
-        hash_str=topic+":"+name
+        hash_str=topic
         hash_digest = hashlib.sha256 (bytes (hash_str, "utf-8")).digest ()  # this is how we get the digest or hash value
         # figure out how many bytes to retrieve
         num_bytes = int(self.m/8)  # otherwise we get float which we cannot use below
@@ -248,16 +248,16 @@ class DiscoveryAppln():
             if (self.state == self.State.PENDING):
                 # send a register msg to discovery service
                 self.logger.debug ("DiscoveryAppln::invoke_operation - waiting for pub and sub to registration")
-                if self.cur_pubnum==self.pubnum and self.cur_subnum==self.subnum:
-                    if self.dissemination == "Broker":
-                        if len(self.broker)>0:
-                            self.state = self.State.READY
-                            self.is_ready=True
-                        else:
-                            self.is_ready=False
-                    else:
-                        self.state = self.State.READY
-                        self.is_ready=True
+                # if self.cur_pubnum==self.pubnum and self.cur_subnum==self.subnum:
+                #     if self.dissemination == "Broker":
+                #         if len(self.broker)>0:
+                #             self.state = self.State.READY
+                #             self.is_ready=True
+                #         else:
+                #             self.is_ready=False
+                #     else:
+                #         self.state = self.State.READY
+                #         self.is_ready=True
                 return None
             
             elif (self.state == self.State.READY):
@@ -271,26 +271,36 @@ class DiscoveryAppln():
         except Exception as e:
             raise e
     
-    def chord_algurithm(self,disc_req):
+    def chord_algurithm(self,register_req, key):
         self.logger.info ("DiscoveryAppln::chord_algurithm")
-        hash_value=disc_req.key
-        index=self.find_successor(self.hash,hash_value)
+        index=self.find_successor(self.hash,key)
         node_type=None
         status=discovery_pb2.STATUS_SUCCESS
         if index==0:
             node_type=discovery_pb2.TYPE_SUCCESSOR
         else:
-            node_type=discovery_pb2.TYPE_PRENODE
-        self.mw_obj.relay_chord_req(status,index,node_type,hash_value,disc_req)
+            node_type=discovery_pb2.TYPE_RELAY
+        self.mw_obj.relay_register_req(status,index,node_type,key,register_req)
+
+    def isready_iterate_chord(self,isready_req, key):
+        self.logger.info ("DiscoveryAppln::isready_iterate_chord")
+        pubnum=isready_req.pubnum+self.cur_pubnum
+        subnum=isready_req.subnum+self.cur_subnum
+        broker=(isready_req.broker or (len(self.broker)>0))
+        node_type=None
+        if self.finger_table[0][1]==key:
+            node_type=discovery_pb2.TYPE_SUCCESSOR
+        else:
+            node_type=discovery_pb2.TYPE_RELAY
+        self.mw_obj.relay_isready_req(pubnum,subnum,broker,node_type,key)
 
     def register_request_encode(self,reg_req):
         try:
-            self.logger.info ("DiscoveryAppln::register")
+            self.logger.info ("DiscoveryAppln::register encode")
             #find which node should be stored
-            name=reg_req.info.id
             topiclist=reg_req.topiclist[:]
             for topic in topiclist:
-                hash_value=self.hash_func(topic,name)
+                hash_value=self.hash_func(topic)
                 index=self.find_successor(self.hash,hash_value)
                 node_type=None
                 if index==0:
@@ -305,6 +315,28 @@ class DiscoveryAppln():
         except Exception as e:
             raise e
 
+    def isready_request_encode(self,isready_req):
+        try:
+            self.logger.info ("DiscoveryAppln::is ready encode")
+            #iterate all dhtNodes
+            pubnum=self.cur_pubnum
+            subnum=self.cur_subnum
+            broker=(len(self.broker)>0)
+            node_type=discovery_pb2.TYPE_RELAY
+            self.mw_obj.send_chord_isready_req(pubnum,subnum,broker,node_type)
+
+            #waiting for chord reply 
+            return None
+            
+        except Exception as e:
+            raise e
+        
+    def lookup_request_encode(self,reg_req):
+        pass
+        
+    def lookall_request_encode(self,reg_req):
+        pass
+        
     def register_request(self,reg_req):
         try:
             self.logger.info ("DiscoveryAppln::register")
@@ -362,6 +394,16 @@ class DiscoveryAppln():
     def isready_request(self,isready_req):
         try:
             self.logger.info ("DiscoveryAppln::publisher is ready")
+            if isready_req.pubnum==self.pubnum and isready_req.subnum==self.subnum:
+                if self.dissemination == "Broker":
+                    if isready_req.broker:
+                        self.state = self.State.READY
+                        self.is_ready=True
+                    else:
+                        self.is_ready=False
+                else:
+                    self.state = self.State.READY
+                    self.is_ready=True
             self.mw_obj.send_isready_resp(self.is_ready)
             # return a timeout of zero so that the event loop in its next iteration will immediately make
             # an upcall to us

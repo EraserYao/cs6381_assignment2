@@ -74,7 +74,10 @@ message RegisterResp
 // topics. Accordingly, there will be a req and resp message types.
 message IsReadyReq
 {
-   // we really don't need to send any field
+   // we really don't need to send any field\
+   optional int64 pubnum=1;
+   optional int64 subnum=2;
+   optional bool broker=3;
 }
 
 // Response to the IsReady request

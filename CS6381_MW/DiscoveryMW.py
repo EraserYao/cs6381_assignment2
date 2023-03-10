@@ -121,7 +121,12 @@ class DiscoveryMW():
                 elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_ALL_PUBS):
                     timeout = self.upcall_obj.lookall_request (disc_req.lookall_req)
             elif(disc_req.dht_type==discovery_pb2.TYPE_RELAY):
-                timeout = self.upcall_obj.chord_algurithm (disc_req)
+                if (disc_req.msg_type == discovery_pb2.TYPE_REGISTER or disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_PUB_BY_TOPIC):
+                    timeout = self.upcall_obj.chord_algurithm (disc_req.register_req, disc_req.key)
+                elif (disc_req.msg_type == discovery_pb2.TYPE_ISREADY):
+                    timeout = self.upcall_obj.isready_iterate_chord (disc_req.isready_req, disc_req.key)
+                elif (disc_req.msg_type == discovery_pb2.TYPE_LOOKUP_ALL_PUBS):
+                    timeout = self.upcall_obj.lookall_iterate_chord (disc_req.lookall_req, disc_req.key)
             elif(disc_req.dht_type==discovery_pb2.TYPE_INITIAL):
                 if (disc_req.msg_type == discovery_pb2.TYPE_REGISTER):
                     timeout = self.upcall_obj.register_request_encode (disc_req.register_req)
@@ -148,16 +153,18 @@ class DiscoveryMW():
         except Exception as e:
             raise e
 
-    def relay_chord_req(self,index,node_type,disc_req):
-        self.logger.info ("DiscoveryMW::relay DHT request")
+    def relay_register_req(self,index,node_type,key,register_req):
+        self.logger.info ("DiscoveryMW::relay_chord_req")
 
-        self.logger.debug ("DiscoveryMW::relay DHT request - build the outer DiscoveryReq message")
-        relay_disc_req = discovery_pb2.DiscoveryReq ()  # allocate
-        relay_disc_req.CopyFrom (disc_req)
-        relay_disc_req.node_type=node_type
+        self.logger.debug ("DiscoveryMW::relay_chord_req - build the outer DiscoveryReq message")
+        disc_req = discovery_pb2.DiscoveryReq ()  # allocate
+        disc_req.node_type=node_type
+        disc_req.msg_type = discovery_pb2.TYPE_REGISTER
+        disc_req.key=key
+        disc_req.register_req.CopyFrom (register_req)
         self.logger.debug ("DiscoveryMW::send DHT register request - done building the outer message")
 
-        buf2send = relay_disc_req.SerializeToString ()
+        buf2send = disc_req.SerializeToString ()
         self.logger.debug ("Stringified serialized buf = {}".format (buf2send))
 
         # now send this to our discovery service
@@ -165,7 +172,34 @@ class DiscoveryMW():
         self.req[index].send (buf2send)  # we use the "send" method of ZMQ that sends the bytes
 
         # now go to our event loop to receive a response to this request
-        self.logger.info ("DiscoveryMW::end DHT register request - sent response message")
+        self.logger.info ("DiscoveryMW::end relay_chord_req - sent response message")
+
+    def relay_isready_req(self,pubnum,subnum,broker,node_type,key):
+        self.logger.info ("DiscoveryMW::relay_isready_req")
+
+        self.logger.debug ("DiscoveryMW::relay_isready_req - populate the nested IsReady msg")
+        isready_req = discovery_pb2.IsReadyReq ()  # allocate 
+        isready_req.pubnum=pubnum
+        isready_req.subnum=subnum
+        isready_req.broker=broker
+        self.logger.debug ("DiscoveryMW::relay_isready_req - done populating nested IsReady msg")
+
+        self.logger.debug ("DiscoveryMW::relay DHT request - build the outer DiscoveryReq message")
+        disc_req = discovery_pb2.DiscoveryReq ()  # allocate
+        disc_req.node_type=node_type
+        disc_req.msg_type = discovery_pb2.TYPE_ISREADY
+        disc_req.isready_req.CopyFrom (isready_req)
+        self.logger.debug ("DiscoveryMW::send DHT register request - done building the outer message")
+
+        buf2send = disc_req.SerializeToString ()
+        self.logger.debug ("Stringified serialized buf = {}".format (buf2send))
+
+        # now send this to our discovery service
+        self.logger.debug ("DiscoveryMW::end DHT register request - send stringified buffer")
+        self.req[0].send (buf2send)  # we use the "send" method of ZMQ that sends the bytes
+
+        # now go to our event loop to receive a response to this request
+        self.logger.info ("DiscoveryMW::isready_relay_req - sent response message")
 
     def send_chord_register_req(self,index,node_type,hash_value,register_req,topic):
         self.logger.info ("DiscoveryMW::send DHT register request")
